@@ -100,6 +100,7 @@ Deno.serve(async (req: Request) => {
     db.close();
     return new Response(JSON.stringify({ backup_sha256, count: measurements.length, measurements }), { status: 200, headers: jsonHeaders });
   } catch (error) {
-    return new Response(JSON.stringify({ error: "parse_failed", message: String(error?.message ?? error) }), { status: 500, headers: jsonHeaders });
+    const message = error instanceof Error ? error.message : String(error);
+    return new Response(JSON.stringify({ error: "parse_failed", message }), { status: 500, headers: jsonHeaders });
   }
 });
