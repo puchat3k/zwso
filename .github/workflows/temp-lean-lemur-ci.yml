@@ -1,0 +1,37 @@
+name: Temp Lean Lemur CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temp-lean-lemur-ci.yml']
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci/lean-lemur-n8n-validation
+      - name: Static checks
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          root=pathlib.Path('ci/lean-lemur')
+          files=[root/'lean_lemur_openscale_ingest.n8n.json',root/'lean_lemur_weight_distribution.n8n.json']
+          for p in files:
+              w=json.load(open(p)); assert w.get('id'); assert w.get('active') is False
+          s=open(files[0]).read(); d=open(files[1]).read()
+          assert 'n8n-nodes-base.executeCommand' not in s
+          assert 'n8n-nodes-base.readWriteFile' not in s
+          assert 'openscale-parse-backup' in s
+          assert 'next_attempt_at' in d and 'created_at' in d
+          print('PASS static')
+          PY
+      - name: Import into n8n 1.113.3
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/n8n-ci
+          docker run --rm -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret -v /tmp/n8n-ci:/home/node/.n8n -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
+          docker run --rm -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret -v /tmp/n8n-ci:/home/node/.n8n -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_weight_distribution.n8n.json
