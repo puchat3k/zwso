@@ -70,11 +70,15 @@ jobs:
                   out.write(p,arcname=name)
           con.close()
           PY
-          curl --fail-with-body -sS -X POST \
+          status=$(curl -sS -X POST \
             -H 'Content-Type: application/zip' \
             --data-binary @/tmp/openscale-ci.zip \
-            https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup \
-            -o /tmp/parser.json
+            -o /tmp/parser.json \
+            -w '%{http_code}' \
+            https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup)
+          cat /tmp/parser.json
+          echo
+          test "$status" = "200"
           python3 - <<'PY'
           import json
           x=json.load(open('/tmp/parser.json'))
