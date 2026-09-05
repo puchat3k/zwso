@@ -88,14 +88,23 @@ jobs:
           with zipfile.ZipFile('/tmp/openscale-fixture.zip','w',zipfile.ZIP_DEFLATED) as z:
               z.write(db,arcname='openScale.db')
           PY
-          docker run -d --rm --name openscale-parser-ci -p 8000:8000 \
+          docker run --rm \
             -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app:ro" -w /app \
-            denoland/deno:2.4.5 run --allow-net --allow-env index.ts
+            denoland/deno:2.4.5 check index.ts
+          docker run -d --name openscale-parser-ci -p 8000:8000 \
+            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app:ro" -w /app \
+            denoland/deno:2.4.5 run --allow-all index.ts
           trap 'docker rm -f openscale-parser-ci >/dev/null 2>&1 || true' EXIT
-          for i in $(seq 1 60); do
-            if curl -sS http://127.0.0.1:8000/ >/dev/null 2>&1; then break; fi
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sS http://127.0.0.1:8000/ >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker ps -q --filter name=openscale-parser-ci | grep -q .; then break; fi
             sleep 1
           done
+          if [ "$ready" != 1 ]; then
+            docker logs openscale-parser-ci || true
+            exit 1
+          fi
           curl --fail-with-body -sS -X POST \
             -H 'Content-Type: application/zip' \
             --data-binary @/tmp/openscale-fixture.zip \
