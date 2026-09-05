@@ -1,0 +1,61 @@
+name: Validate Lean Lemur n8n
+
+on:
+  push:
+    branches:
+      - ci/lean-lemur-n8n-validation
+    paths:
+      - 'ci/lean-lemur/**'
+      - '.github/workflows/validate-lean-lemur-n8n.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static contract checks
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          root = pathlib.Path('ci/lean-lemur')
+          files = [root/'lean_lemur_openscale_ingest.n8n.json', root/'lean_lemur_weight_distribution.n8n.json']
+          for path in files:
+              wf=json.load(open(path))
+              assert wf.get('id'), f'{path}: missing workflow id'
+              assert wf.get('active') is False
+              assert wf['settings']['timezone']=='Asia/Manila'
+              names=[n['name'] for n in wf['nodes']]
+              assert len(names)==len(set(names))
+              for src,bundle in wf.get('connections',{}).items():
+                  assert src in names
+                  for out in bundle.get('main',[]):
+                      for edge in out:
+                          assert edge['node'] in names
+          ingest=open(files[0]).read()
+          dist=open(files[1]).read()
+          assert 'n8n-nodes-base.executeCommand' not in ingest
+          assert 'n8n-nodes-base.readWriteFile' not in ingest
+          for token in ['openscale-parse-backup','lean_lemur.scale_measurements','ON CONFLICT (measurement_key)','openscale_eufy_t9120']:
+              assert token in ingest, token
+          for token in ['airtable_ifttt_apple_health','fitbit_trendweight','api.airtable.com','api.fitbit.com/1/user/-/body/log/weight.json','FOR UPDATE SKIP LOCKED','next_attempt_at','created_at']:
+              assert token in dist, token
+          print('PASS static contracts')
+          PY
+
+      - name: Import into n8n 1.113.3
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/n8n-ci
+          docker run --rm \
+            -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret \
+            -v /tmp/n8n-ci:/home/node/.n8n \
+            -v "$PWD/ci/lean-lemur:/workflows:ro" \
+            n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
+          docker run --rm \
+            -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret \
+            -v /tmp/n8n-ci:/home/node/.n8n \
+            -v "$PWD/ci/lean-lemur:/workflows:ro" \
+            n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_weight_distribution.n8n.json
