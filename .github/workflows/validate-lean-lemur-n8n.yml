@@ -42,12 +42,21 @@ jobs:
           assert 'edge-parser' not in ingest
           for token in ['openscale-parse-backup','lean_lemur.scale_measurements','ON CONFLICT (measurement_key)','openscale_eufy_t9120']:
               assert token in ingest, token
-          for token in ['airtable_ifttt_apple_health','fitbit_trendweight','api.airtable.com','api.fitbit.com/1/user/-/body/log/weight.json','FOR UPDATE SKIP LOCKED','next_attempt_at','created_at']:
+          for token in ['airtable_ifttt_apple_health','fitbit_trendweight','api.airtable.com','api.fitbit.com/1/user/-/body/log/weight.json','FOR UPDATE SKIP LOCKED','next_attempt_at','created_at','encodeURIComponent']:
               assert token in dist, token
+          dist_wf=json.load(open(files[1]))
+          airtable=next(n for n in dist_wf['nodes'] if n['name']=='Airtable upsert')
+          assert airtable['parameters']['method']=='PATCH'
+          edge=(root/'openscale-parse-backup'/'index.ts').read_text()
+          for token in ['sql.js@1.14.1/dist/sql-asm.js','openScale.db-wal','crypto.subtle.digest','backup_sha256','BODY_FAT','IMPEDANCE']:
+              assert token in edge, token
+          migration=(root/'20260905_lean_lemur_measurement_delivery_retry.sql').read_text()
+          for token in ['created_at','next_attempt_at','measurement_deliveries_dispatch_idx']:
+              assert token in migration, token
           print('PASS static contracts')
           PY
 
-      - name: Verify deployed parser requires JWT
+      - name: Verify deployed parser auth gate
         run: |
           set -euo pipefail
           status=$(curl -sS -X POST \
@@ -57,7 +66,109 @@ jobs:
             -w '%{http_code}' \
             https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup)
           test "$status" = "401"
-          echo 'PASS parser auth gate'
+          echo 'PASS deployed parser auth gate'
+
+      - name: Execute exact parser source against SQLite fixture
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sqlite3, tempfile, pathlib, zipfile
+          d=pathlib.Path(tempfile.mkdtemp(prefix='openscale-ci-'))
+          db=d/'openScale.db'
+          con=sqlite3.connect(db)
+          con.executescript('''
+          CREATE TABLE Measurement (id INTEGER PRIMARY KEY, userId INTEGER, timestamp INTEGER);
+          CREATE TABLE MeasurementType (id INTEGER PRIMARY KEY, key TEXT);
+          CREATE TABLE MeasurementValue (measurementId INTEGER, typeId INTEGER, floatValue REAL);
+          INSERT INTO Measurement VALUES (1,1,1788582060684);
+          INSERT INTO MeasurementType VALUES (1,'WEIGHT'),(2,'BODY_FAT'),(3,'WATER'),(4,'MUSCLE'),(5,'BONE'),(6,'BMI'),(7,'IMPEDANCE');
+          INSERT INTO MeasurementValue VALUES (1,1,81.0),(1,2,22.910965),(1,3,55.0),(1,4,40.0),(1,5,3.1),(1,6,24.45),(1,7,512.0);
+          ''')
+          con.commit(); con.close()
+          with zipfile.ZipFile('/tmp/openscale-fixture.zip','w',zipfile.ZIP_DEFLATED) as z:
+              z.write(db,arcname='openScale.db')
+          PY
+          docker run -d --rm --name openscale-parser-ci -p 8000:8000 \
+            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app:ro" -w /app \
+            denoland/deno:2.4.5 run --allow-net --allow-env index.ts
+          trap 'docker rm -f openscale-parser-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sS http://127.0.0.1:8000/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl --fail-with-body -sS -X POST \
+            -H 'Content-Type: application/zip' \
+            --data-binary @/tmp/openscale-fixture.zip \
+            http://127.0.0.1:8000/ -o /tmp/parser-response.json
+          python3 - <<'PY'
+          import json,re
+          x=json.load(open('/tmp/parser-response.json'))
+          assert x['count']==1, x
+          assert re.fullmatch(r'[0-9a-f]{64}',x['backup_sha256'])
+          m=x['measurements'][0]
+          assert m['measurement_id']==1
+          assert abs(float(m['weight_kg'])-81.0)<1e-9
+          assert abs(float(m['bodyfat_pct'])-22.910965)<1e-9
+          assert abs(float(m['impedance_ohm'])-512.0)<1e-9
+          print('PASS exact parser source runtime fixture')
+          PY
+          docker rm -f openscale-parser-ci >/dev/null
+          trap - EXIT
+
+      - name: Validate delivery migration and exact claim SQL
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name lean-lemur-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+          trap 'docker rm -f lean-lemur-pg >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 60); do
+            if docker exec lean-lemur-pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker exec -i lean-lemur-pg psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          create schema lean_lemur;
+          create table lean_lemur.scale_measurements(
+            measurement_key text primary key,
+            weight_kg numeric not null,
+            bodyfat_pct_calculated numeric,
+            measured_at_utc timestamptz not null
+          );
+          create table lean_lemur.measurement_deliveries(
+            measurement_key text not null,
+            destination text not null,
+            status text not null default 'PENDING',
+            attempt_count integer not null default 0,
+            last_attempt_at timestamptz,
+            delivered_at timestamptz,
+            provider_record_id text,
+            last_error text,
+            payload jsonb not null default '{}'::jsonb,
+            updated_at timestamptz not null default now(),
+            primary key(measurement_key,destination)
+          );
+          SQL
+          docker exec -i lean-lemur-pg psql -U postgres -v ON_ERROR_STOP=1 < ci/lean-lemur/20260905_lean_lemur_measurement_delivery_retry.sql
+          docker exec -i lean-lemur-pg psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          insert into lean_lemur.scale_measurements values
+            ('m1',81,22,'2026-09-05T01:00:00Z'),
+            ('m2',82,23,'2026-09-05T02:00:00Z'),
+            ('m3',83,24,'2026-09-05T03:00:00Z');
+          insert into lean_lemur.measurement_deliveries(measurement_key,destination,status,attempt_count,last_attempt_at) values
+            ('m1','airtable_ifttt_apple_health','PENDING',0,null),
+            ('m2','fitbit_trendweight','PROCESSING',2,now()-interval '20 minutes'),
+            ('m3','fitbit_trendweight','RETRY',12,now()-interval '20 minutes');
+          SQL
+          python3 - <<'PY'
+          import json
+          wf=json.load(open('ci/lean-lemur/lean_lemur_weight_distribution.n8n.json'))
+          node=next(n for n in wf['nodes'] if n['name']=='Claim delivery jobs')
+          open('/tmp/claim.sql','w').write(node['parameters']['query'])
+          PY
+          docker exec -i lean-lemur-pg psql -U postgres -v ON_ERROR_STOP=1 < /tmp/claim.sql
+          state=$(docker exec lean-lemur-pg psql -U postgres -Atc "select string_agg(measurement_key||':'||status||':'||attempt_count,',' order by measurement_key) from lean_lemur.measurement_deliveries")
+          test "$state" = "m1:PROCESSING:1,m2:PROCESSING:3,m3:FAILED:12"
+          echo 'PASS delivery migration and exact claim/recovery SQL'
+          docker rm -f lean-lemur-pg >/dev/null
+          trap - EXIT
 
       - name: Import OpenScale ingest into n8n 1.113.3
         run: docker run --rm -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
