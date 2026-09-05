@@ -44,6 +44,48 @@ jobs:
           print('PASS static contracts')
           PY
 
+      - name: Smoke-test deployed OpenScale parser
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, sqlite3, tempfile, zipfile
+          d=pathlib.Path(tempfile.mkdtemp(prefix='openscale-ci-'))
+          db=d/'openScale.db'
+          con=sqlite3.connect(db)
+          con.execute('PRAGMA journal_mode=WAL')
+          con.executescript('''
+          CREATE TABLE Measurement (id INTEGER PRIMARY KEY, userId INTEGER, timestamp INTEGER);
+          CREATE TABLE MeasurementType (id INTEGER PRIMARY KEY, key TEXT);
+          CREATE TABLE MeasurementValue (measurementId INTEGER, typeId INTEGER, floatValue REAL);
+          INSERT INTO Measurement VALUES (1,1,1788582060684);
+          INSERT INTO MeasurementType VALUES (1,'WEIGHT'),(2,'BODY_FAT'),(3,'WATER'),(4,'MUSCLE'),(5,'BONE'),(6,'BMI');
+          INSERT INTO MeasurementValue VALUES (1,1,81.0),(1,2,22.910965),(1,3,55.0),(1,4,40.0),(1,5,3.1),(1,6,24.45);
+          ''')
+          con.commit()
+          z=pathlib.Path('/tmp/openscale-ci.zip')
+          with zipfile.ZipFile(z,'w',zipfile.ZIP_DEFLATED) as out:
+              for name in ('openScale.db','openScale.db-wal','openScale.db-shm'):
+                  p=d/name
+                  assert p.exists(), name
+                  out.write(p,arcname=name)
+          con.close()
+          PY
+          curl --fail-with-body -sS -X POST \
+            -H 'Content-Type: application/zip' \
+            --data-binary @/tmp/openscale-ci.zip \
+            https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup \
+            -o /tmp/parser.json
+          python3 - <<'PY'
+          import json
+          x=json.load(open('/tmp/parser.json'))
+          assert x['count']==1, x
+          m=x['measurements'][0]
+          assert m['measurement_id']==1, m
+          assert abs(float(m['weight_kg'])-81.0)<1e-9, m
+          assert abs(float(m['bodyfat_pct'])-22.910965)<1e-9, m
+          print('PASS deployed parser')
+          PY
+
       - name: Import OpenScale ingest into n8n 1.113.3
         run: docker run --rm -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
 
