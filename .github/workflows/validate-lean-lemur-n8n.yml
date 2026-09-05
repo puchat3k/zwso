@@ -1,15 +1,8 @@
 name: Validate Lean Lemur n8n
 
 on:
-  push:
-    branches:
-      - ci/lean-lemur-n8n-validation
-    paths:
-      - 'ci/lean-lemur/**'
-      - '.github/workflows/validate-lean-lemur-n8n.yml'
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'ci/lean-lemur/**'
       - '.github/workflows/validate-lean-lemur-n8n.yml'
@@ -51,17 +44,8 @@ jobs:
           print('PASS static contracts')
           PY
 
-      - name: Import into n8n 1.113.3
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/n8n-ci
-          docker run --rm \
-            -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret \
-            -v /tmp/n8n-ci:/home/node/.n8n \
-            -v "$PWD/ci/lean-lemur:/workflows:ro" \
-            n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
-          docker run --rm \
-            -e N8N_ENCRYPTION_KEY=ci-only-not-a-secret \
-            -v /tmp/n8n-ci:/home/node/.n8n \
-            -v "$PWD/ci/lean-lemur:/workflows:ro" \
-            n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_weight_distribution.n8n.json
+      - name: Import OpenScale ingest into n8n 1.113.3
+        run: docker run --rm -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
+
+      - name: Import weight distribution into n8n 1.113.3
+        run: docker run --rm -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_weight_distribution.n8n.json
