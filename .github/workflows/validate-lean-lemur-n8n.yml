@@ -89,10 +89,10 @@ jobs:
               z.write(db,arcname='openScale.db')
           PY
           docker run --rm \
-            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app:ro" -w /app \
+            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app" -w /app \
             denoland/deno:2.4.5 deno check index.ts
           docker run -d --name openscale-parser-ci -p 8000:8000 \
-            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app:ro" -w /app \
+            -v "$PWD/ci/lean-lemur/openscale-parse-backup:/app" -w /app \
             denoland/deno:2.4.5 deno run --allow-all index.ts
           trap 'docker rm -f openscale-parser-ci >/dev/null 2>&1 || true' EXIT
           ready=0
