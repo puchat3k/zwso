@@ -76,18 +76,17 @@ jobs:
             -o /tmp/parser.json \
             -w '%{http_code}' \
             https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup)
-          cat /tmp/parser.json
-          echo
           test "$status" = "200"
           python3 - <<'PY'
-          import json
+          import hashlib, json
           x=json.load(open('/tmp/parser.json'))
+          assert x['backup_sha256']==hashlib.sha256(open('/tmp/openscale-ci.zip','rb').read()).hexdigest(), x
           assert x['count']==1, x
           m=x['measurements'][0]
           assert m['measurement_id']==1, m
           assert abs(float(m['weight_kg'])-81.0)<1e-9, m
           assert abs(float(m['bodyfat_pct'])-22.910965)<1e-9, m
-          print('PASS deployed parser')
+          print('PASS deployed parser and archive provenance')
           PY
 
       - name: Import OpenScale ingest into n8n 1.113.3
