@@ -7,6 +7,12 @@ on:
     paths:
       - 'ci/lean-lemur/**'
       - '.github/workflows/validate-lean-lemur-n8n.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'ci/lean-lemur/**'
+      - '.github/workflows/validate-lean-lemur-n8n.yml'
   workflow_dispatch:
 
 jobs:
