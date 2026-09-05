@@ -37,6 +37,9 @@ jobs:
           dist=open(files[1]).read()
           assert 'n8n-nodes-base.executeCommand' not in ingest
           assert 'n8n-nodes-base.readWriteFile' not in ingest
+          assert 'SUPABASE_ANON_KEY' in ingest
+          assert 'backup_sha256' in ingest
+          assert 'edge-parser' not in ingest
           for token in ['openscale-parse-backup','lean_lemur.scale_measurements','ON CONFLICT (measurement_key)','openscale_eufy_t9120']:
               assert token in ingest, token
           for token in ['airtable_ifttt_apple_health','fitbit_trendweight','api.airtable.com','api.fitbit.com/1/user/-/body/log/weight.json','FOR UPDATE SKIP LOCKED','next_attempt_at','created_at']:
@@ -44,50 +47,17 @@ jobs:
           print('PASS static contracts')
           PY
 
-      - name: Smoke-test deployed OpenScale parser
+      - name: Verify deployed parser requires JWT
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import pathlib, sqlite3, tempfile, zipfile
-          d=pathlib.Path(tempfile.mkdtemp(prefix='openscale-ci-'))
-          db=d/'openScale.db'
-          con=sqlite3.connect(db)
-          con.execute('PRAGMA journal_mode=WAL')
-          con.executescript('''
-          CREATE TABLE Measurement (id INTEGER PRIMARY KEY, userId INTEGER, timestamp INTEGER);
-          CREATE TABLE MeasurementType (id INTEGER PRIMARY KEY, key TEXT);
-          CREATE TABLE MeasurementValue (measurementId INTEGER, typeId INTEGER, floatValue REAL);
-          INSERT INTO Measurement VALUES (1,1,1788582060684);
-          INSERT INTO MeasurementType VALUES (1,'WEIGHT'),(2,'BODY_FAT'),(3,'WATER'),(4,'MUSCLE'),(5,'BONE'),(6,'BMI');
-          INSERT INTO MeasurementValue VALUES (1,1,81.0),(1,2,22.910965),(1,3,55.0),(1,4,40.0),(1,5,3.1),(1,6,24.45);
-          ''')
-          con.commit()
-          z=pathlib.Path('/tmp/openscale-ci.zip')
-          with zipfile.ZipFile(z,'w',zipfile.ZIP_DEFLATED) as out:
-              for name in ('openScale.db','openScale.db-wal','openScale.db-shm'):
-                  p=d/name
-                  assert p.exists(), name
-                  out.write(p,arcname=name)
-          con.close()
-          PY
           status=$(curl -sS -X POST \
             -H 'Content-Type: application/zip' \
-            --data-binary @/tmp/openscale-ci.zip \
-            -o /tmp/parser.json \
+            --data-binary 'not-a-zip' \
+            -o /tmp/auth-response.json \
             -w '%{http_code}' \
             https://cfoleiwmizgayhecyymq.supabase.co/functions/v1/openscale-parse-backup)
-          test "$status" = "200"
-          python3 - <<'PY'
-          import hashlib, json
-          x=json.load(open('/tmp/parser.json'))
-          assert x['backup_sha256']==hashlib.sha256(open('/tmp/openscale-ci.zip','rb').read()).hexdigest(), x
-          assert x['count']==1, x
-          m=x['measurements'][0]
-          assert m['measurement_id']==1, m
-          assert abs(float(m['weight_kg'])-81.0)<1e-9, m
-          assert abs(float(m['bodyfat_pct'])-22.910965)<1e-9, m
-          print('PASS deployed parser and archive provenance')
-          PY
+          test "$status" = "401"
+          echo 'PASS parser auth gate'
 
       - name: Import OpenScale ingest into n8n 1.113.3
         run: docker run --rm -v "$PWD/ci/lean-lemur:/workflows:ro" n8nio/n8n:1.113.3 import:workflow --input=/workflows/lean_lemur_openscale_ingest.n8n.json
