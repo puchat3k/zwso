@@ -1,93 +1,95 @@
 # ZWSO . Zeitgeist World State Observatory
 
-ZWSO is an experiment in creating persistent, contemporaneous snapshots of the observable global information and cultural environment.
+ZWSO is a weekly, public-by-design world-state instrument.
 
-Once a week, ZWSO surveys a broad public-source landscape across world affairs, politics, business, technology and AI, entertainment, sport, health, cyber security, climate and significant weather, internet culture and memes. It records a structured snapshot of what appears salient, what may be changing, and where the evidence is uncertain or contradictory.
+It preserves what the observable world looked like at a fixed point in time so later analysis and forecasting do not have to reconstruct the past from today's information.
 
-## Project stage
+## Current methodology
 
-ZWSO is at an early experimental stage. The immediate objective is not to build a comprehensive world-modeling platform. It is to test whether a small, consistent weekly snapshot creates useful longitudinal context.
+**Methodology v0.4** reconciles the original weekly world-state archive with the later v0.3 context-conditioned question work.
 
-The project should remain deliberately narrow until the data proves otherwise:
+The weekly snapshot is again the core product.
 
-- one weekly snapshot cadence
-- a stable methodology
-- immutable historical records
-- a small set of directional context indices
-- explicit uncertainty and source-family divergence
-- simple public documentation
+v0.3's question and context-elasticity machinery remains an optional downstream consumer of immutable ZWSO context packets.
 
-The default is **not to add infrastructure, files, dashboards, services, or taxonomies unless repeated use creates a concrete need**.
+See [methodology/v0.4.md](methodology/v0.4.md).
 
-## Why?
+Historical methodology and snapshots remain unchanged.
 
-Ad hoc current-information retrieval has a weakness: the past is continually reconstructed from the perspective of the present.
+## Four state layers
 
-ZWSO instead preserves what the observable information environment appeared to look like at a particular point in time. Over time, those immutable snapshots may help examine when concerns became salient, which apparently major stories disappeared, which weak signals persisted, and how observable narratives moved.
+1. **Fast state** . news, conflict, markets, FX, energy, cyber, weather and attention.
+2. **Structural state** . trade/globalisation, climate, demographics, poverty, labour, capital, projects, inequality and innovation.
+3. **Belief state** . Metaculus, Kalshi and institutional forecast references.
+4. **Outcome state** . official observations and resolved events used to score forecasts.
 
-## What ZWSO is not
+## Production principle
 
-ZWSO is not a public-opinion poll and does not claim to measure what humanity thinks or feels.
+One self-contained weekly production path:
 
-Its indices are synthetic estimates derived from a defined public-source research process. They describe the observed ZWSO source environment and are primarily useful relative to ZWSO's own historical series.
+~~~text
+public sources
++ GSV public-data stores
++ FX references
++ external forecast references
++ Pukot paper-market scorecard
+→ freeze weekly cutoff
+→ research + synthesis
+→ GSV Supabase zwso.zeitgeist_snapshots
+→ zwso.context_packets
+→ GitHub snapshots/YYYY/YYYY-MM-DD.md
+~~~
 
-## Method
+GSV Supabase is canonical operational state.
 
-Methodology v0.2 uses four source families so conventional news selection does not silently become a proxy for world mood:
+GitHub is the immutable public archive.
 
-1. **News and events** . mainstream, regional, local and multilingual reporting where useful.
-2. **Public-attitude measurements** . polling, consumer confidence, search behaviour and other direct measurements when available.
-3. **Culture and behaviour** . entertainment, sport, memes, creator/social discourse, popular searches and cultural consumption.
-4. **Slow reality** . economic statistics, health indicators, scientific and climate observations, technology adoption, markets and other measured conditions.
+The original ZWSO Neon database is legacy and migration evidence, not a production writer.
 
-ZWSO does not force positive stories to counterbalance negative reporting. Instead it records source-family divergence explicitly, including separate media/news mood and broader observed-state signals where the evidence permits.
+## Weekly snapshot
 
-Each snapshot distinguishes **observed salience**, **interpretation**, **regional or source disagreement**, and **uncertainty**.
+A v0.4 snapshot includes:
 
-## Early signal to watch
+- fast-state synthesis
+- structural regime synthesis
+- belief-state read
+- outcome and resolution read
+- FX rates and recent movement
+- dogfood predictive-market performance
+- strategic capital allocation
+- context indices
+- major, emerging and fading themes
+- coverage and missingness
+- uncertainty and disagreement
+- source provenance
+- comparison with the previous snapshot
 
-The initial retrospective series suggests a potentially useful distinction between **media/news mood** and **broader observed state**. In the most recent reconstructed weeks, news remained negative while economic, cultural and behavioural signals were materially more resilient.
+## Forecasting role
 
-This is not yet a validated finding. The backfill is retrospective and the series is short. It is a hypothesis the contemporaneous Wednesday snapshots can now test.
+ZWSO is a context plane, not an oracle.
 
-A second early pattern is that AI excitement and AI anxiety can rise together. ZWSO should preserve that kind of tension rather than collapsing attitudes into one positive/negative score.
+Its value should be tested by comparing baseline forecasting performance against fast-state, structural-state, belief-state and full-ZWSO variants.
 
-## Immutability
-
-Historical snapshots are not rewritten when the methodology improves. Methodology changes create a new version. Original records remain intact.
-
-Historical reconstructions are explicitly labelled `retrospective_backfill` and should not be treated as equivalent to snapshots generated contemporaneously.
-
-## Downstream use
-
-ZWSO should act as a **second-pass contextual overlay**, not as an ambient authority over other reasoning.
-
-For example, an idea should be assessed on its own merits first. ZWSO may then inform timing, saturation, cultural resonance, risk or writing context without changing the intrinsic quality judgment simply because a topic is currently salient.
+If a source family does not improve out-of-sample forecasting or useful decision quality, it should lose weight or be removed.
 
 ## Public by design
 
-ZWSO is built exclusively from public-source information and derived analysis.
-
-## Architecture
-
-The initial implementation is intentionally small:
-
-public web research → weekly synthesis → immutable snapshot → longitudinal archive
-
-No crawler, real-time feed infrastructure, dashboard or dedicated sentiment-analysis pipeline is required unless actual use later demonstrates a need.
+ZWSO uses public-source information and derived analysis. Source rights and allowed use are tracked in the canonical GSV source catalog.
 
 ## Repository structure
 
-Keep the repository simple. At this stage, a small number of durable files is preferable to a deep taxonomy.
+Keep the public repository small:
 
-Recommended structure:
+- README.md
+- methodology/
+- snapshots/YYYY/
 
-- `README.md`
-- `methodology/`
-- `snapshots/YYYY/`
+## Cadence
 
-Do not create new folders or supporting documents merely because a concept can be separated. Add structure only when the existing layout becomes genuinely hard to use.
+One public snapshot each Wednesday.
+
+The archive remains weekly even when underlying observations and forecasts update more frequently.
 
 ## Status
 
-Experimental. If the snapshots do not prove useful, the correct outcome is to stop the experiment rather than expand infrastructure to justify it.
+Experimental and production-active under v0.4.
